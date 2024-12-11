@@ -33,8 +33,8 @@ def main():
         actions.click_sign_in_button(driver)
 
         # Step 6: Perform login
-        email = "your_email@example.com"  # Replace with your email
-        password = "your_password"       # Replace with your password
+        email = "neoptolemos8@gmail.com"  # Replace with your email
+        password = "Tjwtp2005!"       # Replace with your password
         logger.info("Performing login...")
         actions.perform_login(driver, email, password)
 

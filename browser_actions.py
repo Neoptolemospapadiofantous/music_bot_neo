@@ -20,10 +20,22 @@ class BrowserActions:
             os.makedirs(self.screenshots_dir)
 
     def save_screenshot(self, driver, action_name):
-        """Save a screenshot for the given action."""
-        filepath = os.path.join(self.screenshots_dir, f"{action_name}.png")
-        driver.save_screenshot(filepath)
-        logger.info(f"Screenshot saved: {filepath}")
+	    """
+	    Save a screenshot for the given action with unique filenames.
+	    Ensures no stale state by capturing new screenshots every time.
+	    """
+	    try:
+	        # Ensure unique filenames by appending a timestamp
+	        timestamp = time.strftime("%Y%m%d_%H%M%S")
+	        filepath = os.path.join(self.screenshots_dir, f"{action_name}_{timestamp}.png")
+
+	        # Explicitly refresh the page to avoid stale state if needed
+	        driver.execute_script("void(0);")  # No-op to ensure the page context is current
+
+	        driver.save_screenshot(filepath)
+	        logger.info(f"Screenshot saved: {filepath}")
+	    except Exception as e:
+	        logger.error(f"Failed to save screenshot for {action_name}: {e}")
 
     def _type_like_human(self, element, text, delay_range=(0.1, 0.3)):
         """Simulate human-like typing with random delays."""
@@ -57,16 +69,17 @@ class BrowserActions:
             ActionChains(driver).move_to_element(element).click().perform()
 
     def _handle_overlays(self, driver):
-        """Handle and close any overlays or pop-ups that might obstruct interactions."""
-        try:
-            # Attempt to close any existing overlays at the start
-            if self._handle_dynamic_overlay(driver):
-                logger.info("Overlay handled successfully.")
-            else:
-                logger.info("No overlays to handle at the start.")
-        except Exception as e:
-            logger.error(f"Failed to handle initial overlays: {e}")
-            raise
+	    """Handle and close any overlays or pop-ups that might obstruct interactions."""
+	    try:
+	        logger.info("Checking for overlays...")
+	        if self._handle_dynamic_overlay(driver):
+	            logger.info("Overlay handled successfully.")
+	        else:
+	            logger.info("No overlays to handle.")
+	    except Exception as e:
+	        logger.error(f"Failed to handle overlays: {e}")
+	        self.save_screenshot(driver, "error_handling_overlays")
+	        raise
 
     def _handle_dynamic_overlay(self, driver):
         """
@@ -110,49 +123,65 @@ class BrowserActions:
             return False
 
     def initialize_webdriver(self, proxy):
-        """Initialize the WebDriver with the provided proxy settings."""
-        try:
-            logger.info("Initializing WebDriver with proxy...")
+	    """Initialize the WebDriver with the provided proxy settings and a custom User-Agent."""
+	    try:
+	        logger.info("Initializing WebDriver with proxy...")
 
-            # Extract proxy details
-            proxy_address = proxy['proxy_address']
-            proxy_port = proxy['port']
-            proxy_username = proxy.get('username', None)
-            proxy_password = proxy.get('password', None)
+	        # Extract proxy details
+	        proxy_address = proxy['proxy_address']
+	        proxy_port = proxy['port']
+	        proxy_username = proxy.get('username', None)
+	        proxy_password = proxy.get('password', None)
 
-            # Configure Firefox options
-            options = FirefoxOptions()
-            options.add_argument('--headless')  # Enable headless mode
+	        # Configure Firefox options
+	        options = FirefoxOptions()
+	        options.add_argument('--headless')  # Enable headless mode
 
-            # Selenium Wire proxy configuration
-            seleniumwire_options = {
-                'proxy': {
-                    'http': f"http://{proxy_username}:{proxy_password}@{proxy_address}:{proxy_port}",
-                    'https': f"https://{proxy_username}:{proxy_password}@{proxy_address}:{proxy_port}",
-                    'no_proxy': 'localhost,127.0.0.1'  # Bypass proxy for localhost
-                }
-            }
+	        # Set a modern User-Agent
+	        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+	        options.set_preference("general.useragent.override", user_agent)
 
-            driver = webdriver.Firefox(options=options, seleniumwire_options=seleniumwire_options)
-            driver.set_page_load_timeout(60)  # Set timeout for navigation
-            logger.info("WebDriver initialized successfully.")
-            return driver
+	        # Selenium Wire proxy configuration
+	        seleniumwire_options = {
+	            'proxy': {
+	                'http': f"http://{proxy_username}:{proxy_password}@{proxy_address}:{proxy_port}",
+	                'https': f"https://{proxy_username}:{proxy_password}@{proxy_address}:{proxy_port}",
+	                'no_proxy': 'localhost,127.0.0.1'  # Bypass proxy for localhost
+	            }
+	        }
 
-        except Exception as e:
-            logger.error(f"Failed to initialize WebDriver: {e}")
-            raise
+	        driver = webdriver.Firefox(options=options, seleniumwire_options=seleniumwire_options)
+	        driver.set_page_load_timeout(60)  # Set timeout for navigation
+	        logger.info("WebDriver initialized successfully with User-Agent.")
+	        return driver
+
+	    except Exception as e:
+	        logger.error(f"Failed to initialize WebDriver: {e}")
+	        raise
 
     def navigate_to_google(self, driver):
-        """Navigate to Google and log page content."""
-        logger.info("Navigating to Google homepage...")
-        try:
-            driver.get("https://www.google.com")
-            self._handle_overlays(driver)  # Handle overlays before proceeding
-            self.save_screenshot(driver, "google_homepage")
-            logger.info("Successfully loaded Google homepage.")
-        except Exception as e:
-            logger.error(f"Failed to navigate to Google: {e}")
-            raise
+	    """Navigate to Google and log page content."""
+	    logger.info("Navigating to Google homepage...")
+	    try:
+	        driver.get("https://www.google.com")
+
+	        # Wait for the page to fully load
+	        logger.info("Waiting for the page to load completely...")
+	        WebDriverWait(driver, 20).until(
+	            lambda d: d.execute_script("return document.readyState") == "complete"
+	        )
+	        logger.info("Page fully loaded.")
+
+	        # Handle overlays
+	        self._handle_overlays(driver)
+
+	        # Save a screenshot of the Google homepage
+	        self.save_screenshot(driver, "google_homepage")
+	        logger.info("Successfully loaded Google homepage.")
+	    except Exception as e:
+	        logger.error(f"Failed to navigate to Google: {e}")
+	        self.save_screenshot(driver, "error_google_navigation")
+	        raise
 
     def accept_cookies(self, driver):
 	    """Handle cookie acceptance banner."""
@@ -199,7 +228,7 @@ class BrowserActions:
 	        self._handle_dynamic_overlay(driver)
 
 	        # Refined XPath to target the "Sign In" button
-	        sign_in_locator = (By.XPATH, "//a[@aria-label='Sign in' and @href and span[contains(text(), 'Sign in')]]")
+	        sign_in_locator = (By.XPATH, "//a[@aria-label='Sign in' and @href]")
 	        logger.info("Waiting for the Sign In button to be clickable...")
 	        sign_in_button = WebDriverWait(driver, 15).until(
 	            EC.element_to_be_clickable(sign_in_locator)
